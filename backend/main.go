@@ -15,10 +15,10 @@ var (
 
 func init() {
 	if cpuGeneratorURL == "" {
-		cpuGeneratorURL = "http://localhost:8081"
+		cpuGeneratorURL = "http://cpu-generator:8081" // k8s service name
 	}
 	if allowedOrigins == "" {
-		allowedOrigins = "http://localhost:3000"
+		allowedOrigins = "*" // 개발환경이므로 모든 origin 허용
 	}
 }
 
