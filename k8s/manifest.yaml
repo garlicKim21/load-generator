@@ -1,0 +1,121 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: load-tester
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+  namespace: load-tester
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: frontend
+  template:
+    metadata:
+      labels:
+        app: frontend
+    spec:
+      containers:
+      - name: frontend
+        image: yondulab/load-tester-frontend:v0.1
+        ports:
+        - containerPort: 80
+        env:
+        - name: REACT_APP_API_URL
+          value: "http://backend:8080"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend
+  namespace: load-tester
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 80
+    targetPort: 80
+  selector:
+    app: frontend
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: load-tester
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+    spec:
+      containers:
+      - name: backend
+        image: yondulab/load-tester-backend:v0.1
+        ports:
+        - containerPort: 8080
+        env:
+        - name: CPU_GENERATOR_URL
+          value: "http://cpu-generator:8081"
+        - name: ALLOWED_ORIGINS
+          value: "*"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+  namespace: load-tester
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8080
+    targetPort: 8080
+  selector:
+    app: backend
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cpu-generator
+  namespace: load-tester
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cpu-generator
+  template:
+    metadata:
+      labels:
+        app: cpu-generator
+    spec:
+      containers:
+      - name: cpu-generator
+        image: yondulab/load-tester-cpu-generator:v0.1
+        ports:
+        - containerPort: 8081
+        resources:
+          requests:
+            cpu: 500m
+            memory: 512Mi
+          limits:
+            cpu: 1
+            memory: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cpu-generator
+  namespace: load-tester
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8081
+    targetPort: 8081
+  selector:
+    app: cpu-generator
