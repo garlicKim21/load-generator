@@ -12,7 +12,7 @@ function App() {
     try {
       setCpuLoading(true);
       const action = cpuActive ? 'stop' : 'start';
-      await axios.post(`${API_URL}/api/v1/load/cpu/${action}`);
+      await axios.post(`/api/v1/load/cpu/${action}`);
       setCpuActive(!cpuActive);
     } catch (error) {
       console.error('CPU load error:', error);

@@ -3,6 +3,9 @@ package main
 import (
 	"sync"
 
+	"math"
+	"runtime"
+
 	"github.com/gin-gonic/gin"
 )
 
@@ -49,15 +52,29 @@ func handleLoad(c *gin.Context) {
 }
 
 func generateLoad(stop chan bool) {
-	for {
-		select {
-		case <-stop:
-			return
-		default:
-			// CPU 부하 생성
-			for i := 0; i < 1000000; i++ {
-				_ = i * i
+	numCPU := runtime.NumCPU()
+	wg := sync.WaitGroup{}
+
+	// 각 CPU 코어당 goroutine 생성
+	for i := 0; i < numCPU; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			data := make([]float64, 1000000)
+
+			for {
+				select {
+				case <-stop:
+					return
+				default:
+					// 메모리 접근과 복잡한 연산 조합
+					for j := 0; j < len(data); j++ {
+						data[j] = math.Sin(float64(j)) * math.Cos(float64(j))
+						_ = math.Pow(data[j], 2.0)
+					}
+				}
 			}
-		}
+		}()
 	}
+	wg.Wait()
 }
