@@ -7,6 +7,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o main .
 
 FROM alpine:latest
 WORKDIR /app
+RUN apk add --no-cache --repository http://dl-cdn.alpinelinux.org/alpine/edge/community stress-ng
 COPY --from=builder /app/main .
 EXPOSE 8081
 CMD ["./main"]

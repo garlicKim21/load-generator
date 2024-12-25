@@ -1,80 +1,79 @@
 package main
 
 import (
+	"log"
+	"net/http"
+	"os/exec"
 	"sync"
-
-	"math"
-	"runtime"
+	"syscall"
 
 	"github.com/gin-gonic/gin"
 )
 
 var (
-	isLoading bool
-	loadMutex sync.Mutex
-	stopChan  chan bool
+	stressCmd *exec.Cmd
+	mutex     sync.Mutex
 )
+
+type Response struct {
+	Status string `json:"status"`
+}
 
 func main() {
 	r := gin.Default()
-	stopChan = make(chan bool)
-
 	r.POST("/load/:action", handleLoad)
-	r.Run(":8081")
+
+	if err := r.Run(":8081"); err != nil {
+		log.Fatal(err)
+	}
 }
 
 func handleLoad(c *gin.Context) {
 	action := c.Param("action")
-	loadMutex.Lock()
-	defer loadMutex.Unlock()
+	mutex.Lock()
+	defer mutex.Unlock()
 
 	switch action {
 	case "start":
-		if !isLoading {
-			isLoading = true
-			stopChan = make(chan bool)
-			go generateLoad(stopChan)
-			c.JSON(200, gin.H{"status": "started"})
-		} else {
-			c.JSON(400, gin.H{"status": "already running"})
+		if err := startCPULoad(); err != nil {
+			c.JSON(http.StatusInternalServerError, Response{Status: "error"})
+			return
 		}
+		c.JSON(http.StatusOK, Response{Status: "started"})
+
 	case "stop":
-		if isLoading {
-			stopChan <- true
-			isLoading = false
-			c.JSON(200, gin.H{"status": "stopped"})
-		} else {
-			c.JSON(400, gin.H{"status": "not running"})
+		if err := stopCPULoad(); err != nil {
+			c.JSON(http.StatusInternalServerError, Response{Status: "error"})
+			return
 		}
+		c.JSON(http.StatusOK, Response{Status: "stopped"})
+
 	default:
-		c.JSON(400, gin.H{"error": "invalid action"})
+		c.JSON(http.StatusBadRequest, Response{Status: "invalid action"})
 	}
 }
 
-func generateLoad(stop chan bool) {
-	numCPU := runtime.NumCPU()
-	wg := sync.WaitGroup{}
+func startCPULoad() error {
+	if stressCmd == nil || stressCmd.ProcessState != nil {
+		stressCmd = exec.Command("stress-ng", "--cpu", "1")
 
-	// 각 CPU 코어당 goroutine 생성
-	for i := 0; i < numCPU; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			data := make([]float64, 1000000)
-
-			for {
-				select {
-				case <-stop:
-					return
-				default:
-					// 메모리 접근과 복잡한 연산 조합
-					for j := 0; j < len(data); j++ {
-						data[j] = math.Sin(float64(j)) * math.Cos(float64(j))
-						_ = math.Pow(data[j], 2.0)
-					}
-				}
-			}
-		}()
+		stressCmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+		return stressCmd.Start()
 	}
-	wg.Wait()
+	return nil
+}
+
+func stopCPULoad() error {
+	if stressCmd == nil || stressCmd.Process == nil {
+		return nil
+	}
+
+	pgid, err := syscall.Getpgid(stressCmd.Process.Pid)
+	if err == nil {
+		syscall.Kill(-pgid, syscall.SIGTERM)
+	}
+
+	stressCmd.Wait()
+	stressCmd = nil
+	return nil
 }
