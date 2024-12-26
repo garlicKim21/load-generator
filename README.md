@@ -15,6 +15,33 @@
 
 ## 시스템 아키텍처
 
+```mermaid
+graph TD
+    A[Frontend\n React App] -->|HTTP POST| B[Backend Service\n :8080]
+    B -->|HTTP POST| C[CPU Generator\n :8081]
+    C -->|Execute| D[stress-ng]
+    
+    subgraph Kubernetes Cluster
+        subgraph Frontend Pod
+            A
+        end
+        
+        subgraph Backend Pod
+            B
+        end
+        
+        subgraph CPU Generator Pod
+            C
+            D
+        end
+    end
+
+    style A fill:#f9f,stroke:#333,stroke-width:2px
+    style B fill:#bbf,stroke:#333,stroke-width:2px
+    style C fill:#dfd,stroke:#333,stroke-width:2px
+    style D fill:#fdd,stroke:#333,stroke-width:2px
+```
+
 시스템은 세 개의 주요 컴포넌트로 구성되어 있습니다:
 
 1. **Frontend (React)**
@@ -99,3 +126,15 @@ kubectl get pods -n load-tester
 ```bash
 kubectl logs -f deployment/[component-name] -n load-tester
 ```
+
+## 기여 방법
+
+1. Fork the repository
+2. Create your feature branch
+3. Commit your changes
+4. Push to the branch
+5. Create a new Pull Request
+
+## 라이센스
+
+This project is licensed under the MIT License - see the LICENSE file for details.
