@@ -17,8 +17,11 @@
 
 ```mermaid
 graph TD
-    A[Frontend\n React App] -->|HTTP POST| B[Backend Service\n :8080]
-    B -->|HTTP POST| C[CPU Generator\n :8081]
+    A[Frontend  
+    React App] -->|HTTP POST| B[Backend Service  
+    :8080]
+    B -->|HTTP POST| C[CPU Generator  
+    :8081]
     C -->|Execute| D[stress-ng]
     
     subgraph Kubernetes Cluster
