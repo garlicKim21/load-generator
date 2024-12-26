@@ -2,25 +2,16 @@ package main
 
 import (
 	"net/http"
-	"os"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 )
 
 var (
-	cpuGeneratorURL = os.Getenv("CPU_GENERATOR_URL")
-	allowedOrigins  = os.Getenv("ALLOWED_ORIGINS")
+	cpuGeneratorURL    = "http://cpu-generator:8081"
+	memoryGeneratorURL = "http://memory-generator:8081"
+	allowedOrigins     = "*"
 )
-
-func init() {
-	if cpuGeneratorURL == "" {
-		cpuGeneratorURL = "http://cpu-generator:8081" // k8s service name
-	}
-	if allowedOrigins == "" {
-		allowedOrigins = "*" // 개발환경이므로 모든 origin 허용
-	}
-}
 
 func main() {
 	r := gin.Default()
@@ -38,6 +29,7 @@ func main() {
 		load := v1.Group("/load")
 		{
 			load.POST("/cpu/:action", handleCPULoad)
+			load.POST("/memory/:action", handleMemoryLoad)
 		}
 	}
 
@@ -47,7 +39,6 @@ func main() {
 func handleCPULoad(c *gin.Context) {
 	action := c.Param("action")
 
-	// CPU Generator 서비스 호출
 	resp, err := http.Post(
 		cpuGeneratorURL+"/load/"+action,
 		"application/json",
@@ -55,7 +46,7 @@ func handleCPULoad(c *gin.Context) {
 	)
 
 	if err != nil {
-		c.JSON(500, gin.H{
+		c.JSON(http.StatusInternalServerError, gin.H{
 			"status":  "error",
 			"message": "Failed to communicate with CPU generator",
 		})
@@ -63,7 +54,6 @@ func handleCPULoad(c *gin.Context) {
 	}
 	defer resp.Body.Close()
 
-	// Generator의 응답 상태코드 확인
 	if resp.StatusCode != http.StatusOK {
 		c.JSON(resp.StatusCode, gin.H{
 			"status":  "error",
@@ -72,7 +62,39 @@ func handleCPULoad(c *gin.Context) {
 		return
 	}
 
-	c.JSON(200, gin.H{
+	c.JSON(http.StatusOK, gin.H{
+		"status": "success",
+		"action": action,
+	})
+}
+
+func handleMemoryLoad(c *gin.Context) {
+	action := c.Param("action")
+
+	resp, err := http.Post(
+		memoryGeneratorURL+"/load/"+action,
+		"application/json",
+		nil,
+	)
+
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"status":  "error",
+			"message": "Failed to communicate with Memory generator",
+		})
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		c.JSON(resp.StatusCode, gin.H{
+			"status":  "error",
+			"message": "Memory generator return an error",
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
 		"status": "success",
 		"action": action,
 	})

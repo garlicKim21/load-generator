@@ -27,7 +27,7 @@ spec:
           limits:
             cpu: 100m
             memory: 64Mi
-        image: yondulab/load-tester-frontend:v0.3
+        image: yondulab/load-tester-frontend:v0.4
         ports:
         - containerPort: 80
 ---
@@ -68,14 +68,9 @@ spec:
           limits:
             cpu: 100m
             memory: 64Mi 
-        image: yondulab/load-tester-backend:v0.3
+        image: yondulab/load-tester-backend:v0.4
         ports:
         - containerPort: 8080
-        env:
-        - name: CPU_GENERATOR_URL
-          value: "http://cpu-generator:8081"
-        - name: ALLOWED_ORIGINS
-          value: "*"
 ---
 apiVersion: v1
 kind: Service
@@ -130,3 +125,44 @@ spec:
     targetPort: 8081
   selector:
     app: cpu-generator
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: memory-generator
+  namespace: load-tester
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: memory-generator
+  template:
+    metadata:
+      labels:
+        app: memory-generator
+    spec:
+      containers:
+      - name: memory-generator
+        image: yondulab/load-tester-memory-generator:v0.1
+        ports:
+        - containerPort: 8081
+        resources:
+          requests:
+            cpu: 250m
+            memory: 128Mi
+          limits:
+            cpu: 250m
+            memory: 1280Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: memory-generator
+  namespace: load-tester
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8081
+    targetPort: 8081
+  selector:
+    app: memory-generator

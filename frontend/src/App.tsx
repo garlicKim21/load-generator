@@ -1,71 +1,79 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import axios from 'axios';
+import { LoadButton } from './LoadButton';
+import { ErrorMessage } from './ErrorMessage';
+import { LoadType, LoadStates } from './types';
 import './App.css';
 
-function App() {
-  const [cpuLoading, setCpuLoading] = useState(false);
-  const [cpuActive, setCpuActive] = useState(false);
+const initialLoadStates: LoadStates = {
+  cpu: { loading: false, active: false },
+  memory: { loading: false, active: false },
+  network: { loading: false, active: false }
+};
 
-  const handleCpuLoad = async () => {
+function App() {
+  const [loadStates, setLoadStates] = useState<LoadStates>(initialLoadStates);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleError = useCallback((error: any, operation: string) => {
+    console.error(`${operation} error:`, error);
+    setError(`Failed to ${operation.toLowerCase()}: ${error.message}`);
+    setTimeout(() => setError(null), 5000);
+  }, []);
+
+  const handleLoad = useCallback(async (type: LoadType) => {
     try {
-      setCpuLoading(true);
-      const action = cpuActive ? 'stop' : 'start';
-      await axios.post(`/api/v1/load/cpu/${action}`);
-      setCpuActive(!cpuActive);
+      setLoadStates(prev => ({
+        ...prev,
+        [type]: { ...prev[type], loading: true }
+      }));
+
+      const action = loadStates[type].active ? 'stop' : 'start';
+      await axios.post(`/api/v1/load/${type}/${action}`);
+
+      setLoadStates(prev => ({
+        ...prev,
+        [type]: { 
+          loading: false, 
+          active: !prev[type].active 
+        }
+      }));
     } catch (error) {
-      console.error('CPU load error:', error);
-    } finally {
-      setCpuLoading(false);
+      handleError(error, `${type} load operation`);
+      setLoadStates(prev => ({
+        ...prev,
+        [type]: { ...prev[type], loading: false }
+      }));
     }
-  };
+  }, [loadStates, handleError]);
 
   return (
     <div className="App">
       <header className="App-header">
         <h1>Kubernetes Load Generator</h1>
+        <ErrorMessage message={error} />
         <div>
-          <button 
-            onClick={handleCpuLoad}
-            disabled={cpuLoading}
-            style={{ 
-              backgroundColor: cpuActive ? '#ff4444' : '#4CAF50',
-              margin: '10px',
-              padding: '15px 30px',
-              border: 'none',
-              borderRadius: '5px',
-              color: 'white',
-              cursor: 'pointer'
-            }}
-          >
-            {cpuLoading ? 'Processing...' : 
-             cpuActive ? 'Stop CPU Load' : 'Start CPU Load'}
-          </button>
-
-          <button 
-            disabled
-            style={{ 
-              margin: '10px',
-              padding: '15px 30px',
-              border: 'none',
-              borderRadius: '5px',
-              opacity: 0.5
-            }}
-          >
-            Memory Load (Coming Soon)
-          </button>
-
-          <button 
-            disabled
-            style={{ 
-              margin: '10px',
-              padding: '15px 30px',
-              border: 'none',
-              borderRadius: '5px',
-              opacity: 0.5
-            }}
-          >
-            Network Load (Coming Soon)
-          </button>
+          <LoadButton
+            loading={loadStates.cpu.loading}
+            active={loadStates.cpu.active}
+            onClick={() => handleLoad('cpu')}
+            label="CPU"
+          />
+          
+          <LoadButton
+            loading={loadStates.memory.loading}
+            active={loadStates.memory.active}
+            onClick={() => handleLoad('memory')}
+            label="Memory"
+          />
+          
+          <LoadButton
+            loading={loadStates.network.loading}
+            active={loadStates.network.active}
+            onClick={() => handleLoad('network')}
+            disabled={true}
+            label="Network"
+          />
         </div>
       </header>
     </div>
