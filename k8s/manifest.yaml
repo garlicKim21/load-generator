@@ -20,12 +20,16 @@ spec:
     spec:
       containers:
       - name: frontend
-        image: yondulab/load-tester-frontend:v0.1
+        resources:
+          requests:
+            cpu: 100m
+            memory: 64Mi
+          limits:
+            cpu: 100m
+            memory: 64Mi
+        image: yondulab/load-tester-frontend:v0.3
         ports:
         - containerPort: 80
-        env:
-        - name: REACT_APP_API_URL
-          value: "http://backend:8080"
 ---
 apiVersion: v1
 kind: Service
@@ -57,7 +61,14 @@ spec:
     spec:
       containers:
       - name: backend
-        image: yondulab/load-tester-backend:v0.1
+        resources:
+          requests:
+            cpu: 100m
+            memory: 64Mi
+          limits:
+            cpu: 100m
+            memory: 64Mi 
+        image: yondulab/load-tester-backend:v0.3
         ports:
         - containerPort: 8080
         env:
@@ -96,12 +107,12 @@ spec:
     spec:
       containers:
       - name: cpu-generator
-        image: yondulab/load-tester-cpu-generator:v0.1
+        image: yondulab/load-tester-cpu-generator:v0.3
         ports:
         - containerPort: 8081
         resources:
           requests:
-            cpu: 50m
+            cpu: 100m
             memory: 128Mi
           limits:
             cpu: 1
