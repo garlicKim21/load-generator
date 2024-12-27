@@ -1,14 +1,17 @@
+
+
 # Kubernetes Load Generator
 
 쿠버네티스 환경에서 시스템 부하를 생성하고 모니터링하기 위한 테스트 도구입니다.
 
 ## 프로젝트 개요
 
-이 프로젝트는 쿠버네티스 클러스터에서 다양한 유형의 시스템 부하를 생성하고 관리하기 위한 도구입니다. 현재는 CPU 부하 생성 기능이 구현되어 있으며, 향후 메모리 및 네트워크 부하 테스트 기능이 추가될 예정입니다.
+이 프로젝트는 쿠버네티스 클러스터에서 다양한 유형의 시스템 부하를 생성하고 관리하기 위한 도구입니다. CPU와 메모리 부하 생성 기능이 구현되어 있으며, 향후 네트워크 부하 테스트 기능이 추가될 예정입니다.
 
 ### 주요 기능
 
 - CPU 부하 생성 및 제어
+- 메모리 부하 생성 및 제어
 - 실시간 상태 모니터링
 - 웹 기반 사용자 인터페이스
 - 쿠버네티스 네이티브 배포
@@ -17,9 +20,12 @@
 
 ```mermaid
 graph TD
-    A[Frontend<br/> React App] -->|HTTP POST| B[Backend Service<br/> :8080]
-    B -->|HTTP POST| C[CPU Generator<br/> :8081]
-    C -->|Execute| D[stress-ng]
+    A[Frontend<br/> React App] -->|HTTP| B[Backend Service<br/> :8080]
+    B -->|Redis Pub| R[Redis<br/> :6379]
+    R -->|Redis Sub| C[CPU Generator<br/>]
+    R -->|Redis Sub| M[Memory Generator<br/>]
+    C -->|Execute| D[stress-ng<br/>CPU Load]
+    M -->|Execute| E[stress-ng<br/>Memory Load]
     
     subgraph Kubernetes Cluster
         subgraph Frontend Pod
@@ -28,21 +34,30 @@ graph TD
         
         subgraph Backend Pod
             B
+            R
         end
         
-        subgraph CPU Generator Pod
+        subgraph CPU Generator Pods
             C
             D
+        end
+        
+        subgraph Memory Generator Pods
+            M
+            E
         end
     end
 
     style A fill:#f9f,stroke:#333,stroke-width:2px
     style B fill:#bbf,stroke:#333,stroke-width:2px
+    style R fill:#fdd,stroke:#333,stroke-width:2px
     style C fill:#dfd,stroke:#333,stroke-width:2px
+    style M fill:#dfd,stroke:#333,stroke-width:2px
     style D fill:#fdd,stroke:#333,stroke-width:2px
+    style E fill:#fdd,stroke:#333,stroke-width:2px
 ```
 
-시스템은 세 개의 주요 컴포넌트로 구성되어 있습니다:
+시스템은 네 개의 주요 컴포넌트로 구성되어 있습니다:
 
 1. **Frontend (React)**
    - 사용자 인터페이스 제공
@@ -51,12 +66,17 @@ graph TD
 
 2. **Backend (Go/Gin)**
    - API 엔드포인트 제공
-   - 부하 생성 서비스와 통신
+   - Redis를 통한 메시지 발행
    - CORS 및 보안 처리
 
 3. **CPU Generator (Go)**
+   - Redis 구독을 통한 명령 수신
    - stress-ng를 통한 CPU 부하 생성
-   - 부하 수준 제어
+   - 프로세스 관리
+
+4. **Memory Generator (Go)**
+   - Redis 구독을 통한 명령 수신
+   - stress-ng를 통한 메모리 부하 생성
    - 프로세스 관리
 
 ## 기술 스택
@@ -65,6 +85,7 @@ graph TD
 - Backend: Go 1.22, Gin Framework
 - Infrastructure: Kubernetes
 - Load Generation: stress-ng
+- Message Broker: Redis
 
 ## 설치 및 배포
 
@@ -95,6 +116,7 @@ kubectl get svc frontend -n load-tester
 
 2. 웹 브라우저에서 접속하여 사용:
    - CPU 부하 테스트 시작/중지
+   - 메모리 부하 테스트 시작/중지
    - 상태 모니터링
 
 ## 리소스 요구사항
@@ -103,15 +125,15 @@ kubectl get svc frontend -n load-tester
 
 - Frontend: CPU 100m, Memory 64Mi
 - Backend: CPU 100m, Memory 64Mi
+- Redis: CPU 100m, Memory 64Mi
 - CPU Generator: CPU 1000m, Memory 128Mi
+- Memory Generator: CPU 250m, Memory 1280Mi
 
 ## 향후 개발 계획
 
-- [ ] 메모리 부하 테스트 기능
 - [ ] 네트워크 부하 테스트 기능
 - [ ] 상세 모니터링 대시보드
 - [ ] 테스트 시나리오 저장 및 재사용
-- [ ] 멀티 클러스터 지원
 
 ## 문제 해결
 
@@ -127,14 +149,7 @@ kubectl get pods -n load-tester
 kubectl logs -f deployment/[component-name] -n load-tester
 ```
 
-## 기여 방법
-
-1. Fork the repository
-2. Create your feature branch
-3. Commit your changes
-4. Push to the branch
-5. Create a new Pull Request
-
-## 라이센스
-
-This project is licensed under the MIT License - see the LICENSE file for details.
+3. Redis 모니터링:
+```bash
+kubectl exec -it deployment/backend -c redis -n load-tester -- redis-cli monitor
+```
