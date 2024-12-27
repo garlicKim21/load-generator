@@ -1,19 +1,28 @@
 package main
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	"github.com/redis/go-redis/v9"
 )
 
 var (
-	cpuGeneratorURL    = "http://cpu-generator:8081"
-	memoryGeneratorURL = "http://memory-generator:8081"
-	allowedOrigins     = "*"
+	allowedOrigins = "*"
+)
+
+var (
+	rdb *redis.Client
+	ctx = context.Background()
 )
 
 func main() {
+	rdb = redis.NewClient(&redis.Options{
+		Addr: "localhost:6379",
+	})
+
 	r := gin.Default()
 
 	// CORS 설정
@@ -39,25 +48,11 @@ func main() {
 func handleCPULoad(c *gin.Context) {
 	action := c.Param("action")
 
-	resp, err := http.Post(
-		cpuGeneratorURL+"/load/"+action,
-		"application/json",
-		nil,
-	)
-
+	err := rdb.Publish(ctx, "load:cpu:channel", action).Err()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"status":  "error",
-			"message": "Failed to communicate with CPU generator",
-		})
-		return
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		c.JSON(resp.StatusCode, gin.H{
-			"status":  "error",
-			"message": "CPU generator returned an error",
+			"message": "Failed to update state",
 		})
 		return
 	}
@@ -71,25 +66,11 @@ func handleCPULoad(c *gin.Context) {
 func handleMemoryLoad(c *gin.Context) {
 	action := c.Param("action")
 
-	resp, err := http.Post(
-		memoryGeneratorURL+"/load/"+action,
-		"application/json",
-		nil,
-	)
-
+	err := rdb.Publish(ctx, "load:memory:channel", action).Err()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"status":  "error",
-			"message": "Failed to communicate with Memory generator",
-		})
-		return
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		c.JSON(resp.StatusCode, gin.H{
-			"status":  "error",
-			"message": "Memory generator return an error",
+			"message": "Failed to update state",
 		})
 		return
 	}

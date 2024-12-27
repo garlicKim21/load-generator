@@ -1,55 +1,39 @@
 package main
 
 import (
-	"log"
-	"net/http"
+	"context"
 	"os/exec"
 	"sync"
 	"syscall"
 
-	"github.com/gin-gonic/gin"
+	"github.com/redis/go-redis/v9"
 )
 
 var (
 	stressCmd *exec.Cmd
 	mutex     sync.Mutex
+	rdb       *redis.Client
+	ctx       = context.Background()
 )
 
-type Response struct {
-	Status string `json:"status"`
-}
-
 func main() {
-	r := gin.Default()
-	r.POST("/load/:action", handleLoad)
+	rdb = redis.NewClient(&redis.Options{
+		Addr: "backend:6379",
+	})
 
-	if err := r.Run(":8081"); err != nil {
-		log.Fatal(err)
-	}
-}
+	subscriber := rdb.Subscribe(ctx, "load:memory:channel")
+	defer subscriber.Close()
 
-func handleLoad(c *gin.Context) {
-	action := c.Param("action")
-	mutex.Lock()
-	defer mutex.Unlock()
-
-	switch action {
-	case "start":
-		if err := startMemoryLoad(); err != nil {
-			c.JSON(http.StatusInternalServerError, Response{Status: "error"})
-			return
+	// 메시지 수신 대기
+	for msg := range subscriber.Channel() {
+		action := msg.Payload
+		mutex.Lock()
+		if action == "start" && (stressCmd == nil || stressCmd.ProcessState != nil) {
+			startMemoryLoad()
+		} else if action == "stop" && stressCmd != nil {
+			stopMemoryLoad()
 		}
-		c.JSON(http.StatusOK, Response{Status: "started"})
-
-	case "stop":
-		if err := stopMemoryLoad(); err != nil {
-			c.JSON(http.StatusInternalServerError, Response{Status: "error"})
-			return
-		}
-		c.JSON(http.StatusOK, Response{Status: "stopped"})
-
-	default:
-		c.JSON(http.StatusBadRequest, Response{Status: "invalid action"})
+		mutex.Unlock()
 	}
 }
 
