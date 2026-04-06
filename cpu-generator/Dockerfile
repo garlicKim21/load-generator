@@ -6,8 +6,8 @@ RUN go mod download
 COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -o main .
 
-FROM alpine:latest
+FROM debian:bookworm-slim
 WORKDIR /app
-RUN apk add --no-cache --repository http://dl-cdn.alpinelinux.org/alpine/edge/community stress-ng
+RUN apt-get update && apt-get install -y --no-install-recommends stress-ng && rm -rf /var/lib/apt/lists/*
 COPY --from=builder /app/main .
 CMD ["./main"]

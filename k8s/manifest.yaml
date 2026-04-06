@@ -3,6 +3,51 @@ kind: Namespace
 metadata:
   name: load-tester
 ---
+# ============================================================
+# RBAC - Backend needs K8s API access for metrics
+# ============================================================
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: load-tester-backend
+  namespace: load-tester
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: load-tester-reader
+  namespace: load-tester
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list"]
+  - apiGroups: ["autoscaling"]
+    resources: ["horizontalpodautoscalers"]
+    verbs: ["get", "list"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+  - apiGroups: ["metrics.k8s.io"]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: load-tester-reader-binding
+  namespace: load-tester
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: load-tester-reader
+subjects:
+  - kind: ServiceAccount
+    name: load-tester-backend
+    namespace: load-tester
+---
+# ============================================================
+# Frontend
+# ============================================================
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -19,17 +64,17 @@ spec:
         app: frontend
     spec:
       containers:
-      - name: frontend
-        resources:
-          requests:
-            cpu: 100m
-            memory: 64Mi
-          limits:
-            cpu: 100m
-            memory: 64Mi
-        image: yondulab/load-tester-frontend:v0.4
-        ports:
-        - containerPort: 80
+        - name: frontend
+          image: projectgreenist/load-tester-frontend:v1.0
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
 ---
 apiVersion: v1
 kind: Service
@@ -37,13 +82,16 @@ metadata:
   name: frontend
   namespace: load-tester
 spec:
-  type: LoadBalancer
+  type: ClusterIP
   ports:
-  - port: 80
-    targetPort: 80
+    - port: 80
+      targetPort: 80
   selector:
     app: frontend
 ---
+# ============================================================
+# Backend + Redis sidecar
+# ============================================================
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -59,29 +107,45 @@ spec:
       labels:
         app: backend
     spec:
+      serviceAccountName: load-tester-backend
       containers:
-      - name: backend
-        resources:
-          requests:
-            cpu: 100m
-            memory: 64Mi
-          limits:
-            cpu: 100m
-            memory: 64Mi 
-        image: yondulab/load-tester-backend:v0.7
-        ports:
-        - containerPort: 8080
-      - name: redis
-        resources:
-          requests:
-            cpu: 100m
-            memory: 64Mi
-          limits:
-            cpu: 100m
-            memory: 64Mi
-        image: redis:alpine
-        ports:
-        - containerPort: 6379
+        - name: backend
+          image: projectgreenist/load-tester-backend:v1.0
+          ports:
+            - containerPort: 8080
+          env:
+            - name: ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: load-tester-admin
+                  key: password
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+        - name: redis
+          image: redis:alpine
+          ports:
+            - containerPort: 6379
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: load-tester-admin
+  namespace: load-tester
+type: Opaque
+stringData:
+  password: "<강사에게 문의>"
 ---
 apiVersion: v1
 kind: Service
@@ -91,15 +155,18 @@ metadata:
 spec:
   type: ClusterIP
   ports:
-  - name: http
-    port: 8080  
-    targetPort: 8080
-  - name: redis
-    port: 6379
-    targetPort: 6379  
+    - name: http
+      port: 8080
+      targetPort: 8080
+    - name: redis
+      port: 6379
+      targetPort: 6379
   selector:
     app: backend
 ---
+# ============================================================
+# CPU Generator
+# ============================================================
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -116,16 +183,39 @@ spec:
         app: cpu-generator
     spec:
       containers:
-      - name: cpu-generator
-        image: yondulab/load-tester-cpu-generator:v0.6
-        resources:
-          requests:
-            cpu: 100m
-            memory: 128Mi
-          limits:
-            cpu: "1"
-            memory: 128Mi
+        - name: cpu-generator
+          image: projectgreenist/load-tester-cpu-generator:v1.0
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: "1"
+              memory: 128Mi
 ---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: cpu-generator-hpa
+  namespace: load-tester
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: cpu-generator
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 50
+---
+# ============================================================
+# Memory Generator
+# ============================================================
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -142,12 +232,80 @@ spec:
         app: memory-generator
     spec:
       containers:
-      - name: memory-generator
-        image: yondulab/load-tester-memory-generator:v0.2
-        resources:
-          requests:
-            cpu: 250m
-            memory: 128Mi
-          limits:
-            cpu: 250m
-            memory: 1280Mi
+        - name: memory-generator
+          image: projectgreenist/load-tester-memory-generator:v1.0
+          resources:
+            requests:
+              cpu: 250m
+              memory: 256Mi
+            limits:
+              cpu: 250m
+              memory: 1280Mi
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: memory-generator-hpa
+  namespace: load-tester
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: memory-generator
+  minReplicas: 2
+  maxReplicas: 8
+  metrics:
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 60
+---
+# ============================================================
+# Network Generator
+# ============================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: network-generator
+  namespace: load-tester
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: network-generator
+  template:
+    metadata:
+      labels:
+        app: network-generator
+    spec:
+      containers:
+        - name: network-generator
+          image: projectgreenist/load-tester-network-generator:v1.0
+          resources:
+            requests:
+              cpu: 100m
+              memory: 64Mi
+            limits:
+              cpu: 500m
+              memory: 128Mi
+---
+# ============================================================
+# HTTPRoute for public access
+# ============================================================
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: loadtest
+  namespace: load-tester
+spec:
+  parentRefs:
+    - name: shared-gateway
+      namespace: gateway-system
+  hostnames:
+    - "loadtest.basphere.dev"
+  rules:
+    - backendRefs:
+        - name: frontend
+          port: 80
