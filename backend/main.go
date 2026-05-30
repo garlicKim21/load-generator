@@ -44,7 +44,7 @@ func getAdminPassword() string {
 	if pw := os.Getenv("ADMIN_PASSWORD"); pw != "" {
 		return pw
 	}
-	return "<강사에게 문의>"
+	return "changeme" // 운영 시 ADMIN_PASSWORD 환경변수로 반드시 덮어쓸 것
 }
 
 func generateToken() (string, error) {
